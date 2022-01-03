@@ -1,65 +1,144 @@
 import re
-import time
-import sqlite3
+#import time
 import requests
 import configparser
-from typing import Optional
-from fastapi import FastAPI
-from pydantic import BaseModel
+from typing import List
+from datetime import datetime
+from models.album import Album
+from sqlalchemy.orm import Session
+#from configs.config import CONFIGS
+from schemas.album import AlbumSchema
+from configs.database import Base, engine, LocalSession
+from fastapi import status, Depends, FastAPI, HTTPException
 
-class Album(BaseModel):
-    id: int
-    title: str
-    album: str
-    artist: str
-    year: Optional[int]
-    country: str
-    catalog_number: str
-    barcode: Optional[str]
-    labels: Optional[str]
-    genre: Optional[str]
-    sub_genre: Optional[str]
-    format: Optional[str]
-    cover_url: Optional[str]
+Base.metadata.create_all(engine)
+
+CONFIGS = configparser.ConfigParser()
+CONFIGS.read('configs/config.ini')
 
 app = FastAPI()
-CONFIGS = configparser.ConfigParser()
-CONFIGS.read('config.ini')
+
+def get_session():
+    session = LocalSession()
+    try:
+        yield session
+    finally:
+        session.close()
 
 @app.get("/discogs/")
 def get_album_info(barcode: str = '', catalog: str = '', country: str = ''):
     url = f"https://api.discogs.com/database/search?barcode={barcode}&catno={catalog}&country={country}"
     header = {"Authorization": f"Discogs token={CONFIGS['Credentials']['Token']}"}
 
-    response = requests.request("GET", url, headers=header).json().get('results')[0]
+    response = requests.request("GET", url, headers=header).json().get('results')
 
-    album = {
-          'id': int(time.time()/2)
-        , 'title': response.get('title')
-        , 'album': re.search(r'[^-]*$', response.get('title')).group().strip()
-        , 'artist': re.search(r'^[^-]+', response.get('title')).group().strip()
-        , 'year': response.get('year')
-        , 'country': response.get('country')
-        , 'catalog_number': response.get('catno')
-        , 'barcode' : barcode
-        , 'labels': ', '.join(map(str, response.get('label')))
-        , 'genre': ', '.join(map(str, response.get('genre')))
-        , 'sub_genre': ', '.join(map(str, response.get('style')))
-        , 'format': response.get('formats')[0].get('name')
-        , 'cover_url': response.get('cover_image')
-    } 
+    albums = []
+    
+    for release in response:
+        album = {
+            'id': release.get('id')
+            , 'title': release.get('title')
+            , 'album': re.search(r'[^-]*$', release.get('title')).group().strip()
+            , 'artist': re.search(r'^[^-]+', release.get('title')).group().strip()
+            , 'year': release.get('year')
+            , 'country': release.get('country')
+            , 'catalog_number': release.get('catno')
+            , 'barcode' : barcode
+            , 'labels': ', '.join(map(str, release.get('label')))
+            , 'genre': ', '.join(map(str, release.get('genre')))
+            , 'sub_genre': ', '.join(map(str, release.get('style')))
+            , 'format': release.get('formats')[0].get('name')
+            , 'cover_url': release.get('cover_image')
+        }
+
+        albums.append(album)  
+
+    return albums
+
+@app.get("/album", response_model = List[AlbumSchema])
+def show_albums(session: Session = Depends(get_session)):
+    #show all albums.
+    albums = session.query(Album).order_by(Album.artist, Album.album).all()
+
+    return albums
+
+@app.get("/album/{id}", response_model=AlbumSchema)
+def show_album(id: int, session: Session = Depends(get_session)):
+    #show album with id {x}.    
+    album = session.query(Album).get(id)
+
+    if not album:
+        raise HTTPException(status_code=404, detail=f"Ops, we still dosen't have an album with id {id} :(")
 
     return album
 
-@app.post("/album/")
-def create_album(album: Album):
-    con = sqlite3.connect(CONFIGS['Database']['db_file'])
-    cur = con.cursor()
+@app.post("/album/", response_model=AlbumSchema, status_code=status.HTTP_201_CREATED)
+def create_album(album_user: AlbumSchema, session: Session = Depends(get_session)):
+    #create an album.
+    album = Album(
+        id = album_user.id
+        , title = album_user.title
+        , album = album_user.album
+        , artist = album_user.artist
+        , year = album_user.year
+        , country = album_user.country
+        , catalog_number = album_user.catalog_number
+        , barcode = album_user.barcode
+        , labels = album_user.labels
+        , genre = album_user.genre
+        , sub_genre = album_user.sub_genre
+        , format = album_user.format
+        , cover_url = album_user.cover_url
+        , created_at = datetime.utcnow()
+        , updated_at = datetime.utcnow()
+    )
 
-    query = f"INSERT INTO {CONFIGS['Database']['table']} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    cur.executemany(query, tuple(list(album.values())))
-    con.commit()
+    session.add(album)
+    session.commit()
+    session.refresh(album)
 
-    con.close()
+    return album
 
-    return album.get(id)
+@app.put("/album/{id}")
+def update_album(id: int, album_user: AlbumSchema, session: Session = Depends(get_session)):
+    #update album with id {x}.
+    album = session.query(Album).get(id)
+
+    if album:
+        id = album_user.id
+        title = album_user.title
+        album = album_user.album
+        artist = album_user.artist
+        year = album_user.year
+        country = album_user.country
+        catalog_number = album_user.catalog_number
+        barcode = album_user.barcode
+        labels = album_user.labels
+        genre = album_user.genre
+        sub_genre = album_user.sub_genre
+        format = album_user.format
+        cover_url = album_user.cover_url
+        created_at = album_user.created_at
+        updated_at = datetime.utcnow()
+        session.commit()
+
+    if not album:
+        raise HTTPException(status_code=404, detail=f"Ops, we still dosen't have an album with id {id} :(")
+
+    return f"The album with ID {album.id} was updated!"
+
+@app.delete("/album/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_album(id: int, session: Session = Depends(get_session)):
+    #delete album with id {x].
+    album = session.query(Album).get(id)
+
+    if album:
+        title = album.title
+        session.delete(album)
+        session.commit()
+    
+    if not album:
+        raise HTTPException(status_code=404, detail=f"Ops, we still dosen't have an album with id {id} :(")
+
+    #TO-DO: Fix "h11._util.LocalProtocolError: Too much data for declared Content-Length" error
+    pass
