@@ -1,20 +1,16 @@
 import re
-#import time
 import requests
 import configparser
 from typing import List
 from datetime import datetime
 from models.album import Album
+import configs.config as CONFIGS
 from sqlalchemy.orm import Session
-#from configs.config import CONFIGS
 from schemas.album import AlbumSchema
 from configs.database import Base, engine, LocalSession
 from fastapi import status, Depends, FastAPI, HTTPException
 
 Base.metadata.create_all(engine)
-
-CONFIGS = configparser.ConfigParser()
-CONFIGS.read('configs/config.ini')
 
 app = FastAPI()
 
@@ -28,7 +24,7 @@ def get_session():
 @app.get("/discogs/")
 def get_album_info(barcode: str = '', catalog: str = '', country: str = ''):
     url = f"https://api.discogs.com/database/search?barcode={barcode}&catno={catalog}&country={country}"
-    header = {"Authorization": f"Discogs token={CONFIGS['Credentials']['Token']}"}
+    header = {"Authorization": f"Discogs token={CONFIGS.get_token()}"}
 
     response = requests.request("GET", url, headers=header).json().get('results')
 

@@ -1,13 +1,9 @@
-import configparser
+import configs.config as CONFIGS
 from configs.database import Base
-#from configs.config import CONFIGS
 from sqlalchemy import Column, DateTime, Integer, String
 
-CONFIGS = configparser.ConfigParser()
-CONFIGS.read('configs/config.ini')
-
 class Album(Base):
-    __tablename__ = 'albums'
+    __tablename__ = CONFIGS.get_table()
     id = Column(Integer, primary_key=True)
     title = Column(String(256), nullable=False)
     album = Column(String(256), nullable=False)
