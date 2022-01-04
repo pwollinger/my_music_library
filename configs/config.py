@@ -16,8 +16,8 @@ def get_schemas_path():
 CONFIGS = ConfigParser()
 CONFIGS.read(f"{get_config_path()}config.ini")
 
-def get_token():
-    return CONFIGS['Credentials']['Token']
+def get_discogs_token():
+    return CONFIGS['Credentials']['discogs_token']
 
 def get_database():
     return f"{get_config_path()}{CONFIGS['Database']['db_file']}"

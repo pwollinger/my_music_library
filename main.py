@@ -24,7 +24,7 @@ def get_session():
 @app.get("/discogs/")
 def get_album_info(barcode: str = '', catalog: str = '', country: str = ''):
     url = f"https://api.discogs.com/database/search?barcode={barcode}&catno={catalog}&country={country}"
-    header = {"Authorization": f"Discogs token={CONFIGS.get_token()}"}
+    header = {"Authorization": f"Discogs token={CONFIGS.get_discogs_token()}"}
 
     response = requests.request("GET", url, headers=header).json().get('results')
 
